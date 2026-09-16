@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vocab Flashcards · 词测闪卡</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>Vocab<span>Flashcards</span></h1>
+  <nav class="modes" id="modes">
+    <button data-mode="cards" class="active">随机卡</button>
+    <button data-mode="pick">抽人回答</button>
+    <button data-mode="settings">名单设置</button>
+  </nav>
+</header>
+
+<section class="toolbar" id="toolbar">
+  <div class="topics" id="topics"></div>
+  <div class="options">
+    <div class="seg" id="dir">
+      <button data-dir="en" class="active">英 → 中</button>
+      <button data-dir="zh">中 → 英</button>
+      <button data-dir="mix">随机</button>
+    </div>
+    <span class="pool" id="poolInfo"></span>
+  </div>
+</section>
+
+<main>
+  <!-- 随机卡 -->
+  <section class="mode active" id="mode-cards">
+    <div class="card-wrap" id="cardA"></div>
+    <div class="actions">
+      <button class="btn ghost" id="flipA">翻转 <kbd>空格</kbd></button>
+      <button class="btn primary" id="nextA">下一张 <kbd>→</kbd></button>
+    </div>
+  </section>
+
+  <!-- 抽人回答 -->
+  <section class="mode" id="mode-pick">
+    <div class="pick-layout">
+      <div class="pick-stage">
+        <div class="spotlight" id="spotlight">
+          <div class="label">本轮已抽 <span id="roundInfo">0 / 0</span></div>
+          <div class="name" id="pickName">—</div>
+        </div>
+        <div class="card-wrap" id="cardB"></div>
+        <div class="actions">
+          <button class="btn primary big" id="pickBtn">抽一个人 <kbd>P</kbd></button>
+          <button class="btn ghost" id="flipB">翻转 <kbd>空格</kbd></button>
+          <button class="btn ghost" id="nextB">换个词 <kbd>→</kbd></button>
+          <button class="btn ok" id="okBtn">答对 <kbd>1</kbd></button>
+          <button class="btn bad" id="badBtn">答错 <kbd>2</kbd></button>
+        </div>
+        <div class="log-wrap">
+          <div class="log-head">
+            <span>本次记录 <span id="logStats"></span></span>
+            <span>
+              <button class="link" id="copyLog">复制</button>
+              <button class="link" id="clearLog">清空</button>
+            </span>
+          </div>
+          <ol class="log" id="log"></ol>
+        </div>
+      </div>
+      <aside class="prob">
+        <div class="prob-head">
+          <span>抽取概率</span>
+          <label class="chk"><input type="checkbox" id="noRepeat"> 一轮内不重复</label>
+        </div>
+        <table id="probTable"></table>
+        <p class="note">分数 ≥ <b id="cutoffEcho">30</b> 不参与；按排名分配权重，分数越低权重越大（权重 = 分数不低于自己的参与人数）。</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- 名单设置 -->
+  <section class="mode" id="mode-settings">
+    <div class="settings">
+      <div class="row">
+        <label>不参与词测的分数线（≥）<input type="number" id="cutoff" min="0" step="1"></label>
+        <button class="btn ghost" id="addRow">＋ 添加学生</button>
+        <button class="btn ghost" id="resetRoster">恢复成绩表默认</button>
+      </div>
+      <table class="roster" id="roster"></table>
+      <p class="note">修改只保存在本浏览器（localStorage）。没有分数的学生按 0 分计算。</p>
+    </div>
+  </section>
+</main>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
