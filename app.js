@@ -136,7 +136,7 @@
   }
   function applyAdmin() {
     document.body.classList.toggle('admin', admin);
-    $('adminBtn').textContent = admin ? '🔓 Admin · 退出' : '🔒 Admin';
+    $('adminBtn').textContent = admin ? '退出 Admin' : 'Admin';
     try { sessionStorage.setItem(ADMIN_KEY, admin ? '1' : '0'); } catch (e) { /* ignore */ }
     if (!admin && mode === 'settings') setMode('cards');
   }
