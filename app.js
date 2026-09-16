@@ -8,6 +8,7 @@
     cutoff: 30,
     topics: TOPICS.map(t => t.name),
     dir: 'en',
+    perCard: 1,
     noRepeat: true,
     roster: DEFAULT_ROSTER.map(s => ({ ...s })),
     drawn: [],
@@ -37,6 +38,12 @@
     if (deckPos >= deck.length) { shuffle(deck); deckPos = 0; }
     return deck[deckPos++];
   }
+  // a group of `perCard` words shown together on one card
+  function nextWords() {
+    const n = Math.min(state.perCard, deck.length), out = [];
+    for (let i = 0; i < n; i++) { const w = nextWord(); if (w) out.push(w); }
+    return out.length ? out : null;
+  }
 
   // ---------- card component ----------
   function makeCard(container) {
@@ -50,22 +57,24 @@
     el.addEventListener('click', () => api.flip());
     const api = {
       get word() { return current; },
-      show(w) {
-        current = w;
+      // ws: array of words shown together on this card (or null)
+      show(ws) {
+        current = ws && ws.length ? ws : null;
         el.classList.remove('flipped');
-        if (!w) { el.classList.add('empty'); return; }
+        if (!current) { el.classList.add('empty'); return; }
         el.classList.remove('empty');
         const dir = state.dir === 'mix' ? (Math.random() < 0.5 ? 'en' : 'zh') : state.dir;
-        const front = dir === 'en' ? w.en : w.zh, back = dir === 'en' ? w.zh : w.en;
-        // change content after the flip-back animation has hidden the back face
-        const set = () => {
-          el.querySelectorAll('.tag').forEach(t => t.textContent = w.topic);
-          el.querySelector('.front .side').textContent = dir === 'en' ? 'English' : '中文';
-          el.querySelector('.back .side').textContent = dir === 'en' ? '中文' : 'English';
-          el.querySelector('.front .word').textContent = front;
-          el.querySelector('.back .word').textContent = back;
+        const topics = [...new Set(current.map(w => w.topic))].join(' · ');
+        el.querySelectorAll('.tag').forEach(t => t.textContent = topics);
+        el.querySelector('.front .side').textContent = dir === 'en' ? 'English' : '中文';
+        el.querySelector('.back .side').textContent = dir === 'en' ? '中文' : 'English';
+        const fill = (node, key) => {
+          node.className = 'word' + (current.length > 1 ? ` multi n${current.length}` : '');
+          node.innerHTML = '';
+          current.forEach(w => { const s = document.createElement('span'); s.textContent = w[key]; node.appendChild(s); });
         };
-        set();
+        fill(el.querySelector('.front .word'), dir === 'en' ? 'en' : 'zh');
+        fill(el.querySelector('.back .word'), dir === 'en' ? 'zh' : 'en');
       },
       flip() { if (current) el.classList.toggle('flipped'); }
     };
@@ -155,7 +164,7 @@
         rolling = false; lastPicked = chosen.name;
         if (state.noRepeat && !state.drawn.includes(chosen.name)) state.drawn.push(chosen.name);
         save(); renderProb();
-        cardB.show(nextWord());
+        cardB.show(nextWords());
       }
     };
     tick();
@@ -187,9 +196,9 @@
 
   // ---------- log ----------
   function record(ok) {
-    const w = cardB.word;
-    if (!lastPicked || !w) return;
-    state.log.push({ t: Date.now(), name: lastPicked, en: w.en, zh: w.zh, ok });
+    const ws = cardB.word;
+    if (!lastPicked || !ws) return;
+    state.log.push({ t: Date.now(), name: lastPicked, en: ws.map(w => w.en).join(' / '), zh: ws.map(w => w.zh).join(' / '), ok });
     if (state.log.length > 500) state.log.shift();
     save(); renderLog();
     $('okBtn').disabled = $('badBtn').disabled = true;
@@ -238,9 +247,14 @@
 
   // ---------- buttons / keys ----------
   $('flipA').onclick = () => cardA.flip();
-  $('nextA').onclick = () => cardA.show(nextWord());
+  $('nextA').onclick = () => cardA.show(nextWords());
   $('flipB').onclick = () => cardB.flip();
-  $('nextB').onclick = () => { cardB.show(nextWord()); $('okBtn').disabled = $('badBtn').disabled = !lastPicked; };
+  $('nextB').onclick = () => { cardB.show(nextWords()); $('okBtn').disabled = $('badBtn').disabled = !lastPicked; };
+  // slider: words per card
+  const perCardEl = $('perCard');
+  perCardEl.value = state.perCard; $('perCardVal').textContent = state.perCard;
+  perCardEl.oninput = () => { state.perCard = Number(perCardEl.value); $('perCardVal').textContent = state.perCard; save(); };
+  perCardEl.onchange = () => { perCardEl.blur(); (mode === 'cards' ? cardA : cardB).show(nextWords()); };
   $('pickBtn').onclick = () => { doPick(); $('okBtn').disabled = $('badBtn').disabled = false; };
   $('okBtn').onclick = () => record(true);
   $('badBtn').onclick = () => record(false);
@@ -261,5 +275,5 @@
   // ---------- init ----------
   renderTopics(); buildDeck(); renderLog(); renderProb();
   $('okBtn').disabled = $('badBtn').disabled = true;
-  cardA.show(nextWord());
+  cardA.show(nextWords());
 })();
