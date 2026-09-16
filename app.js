@@ -279,6 +279,139 @@
     if (confirm('恢复为成绩表中的默认名单和分数？')) { state.roster = DEFAULT_ROSTER.map(s => ({ ...s })); state.cutoff = 30; state.drawn = []; save(); renderRoster(); }
   };
 
+  // ---------- roster import ----------
+  const isNum = v => typeof v === 'number' ? isFinite(v) : /^-?\d+(\.\d+)?$/.test(String(v).trim());
+  const isText = v => v !== null && v !== undefined && String(v).trim() !== '' && !isNum(v);
+
+  // minimal CSV/TSV parser (quotes supported); delimiter auto-detected
+  function parseDelimited(text) {
+    const first = text.split(/\r?\n/).find(l => l.trim()) || '';
+    const delim = first.includes('\t') ? '\t' : (first.split(';').length > first.split(',').length ? ';' : ',');
+    const rows = []; let row = [], cell = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === delim) { row.push(cell); cell = ''; }
+      else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += ch;
+    }
+    if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(r => r.some(c => String(c).trim() !== ''));
+  }
+
+  // a header row is a first row containing no numbers at all
+  const headerOf = rows => (rows[0] && rows[0].some(isText) && !rows[0].some(isNum)) ? rows[0] : null;
+  const SCORE_KEYS = /quiz|score|mark|test|grade|point|分|成绩|得分/i;
+
+  // name column = most distinct text values; score column = a numeric column to its right,
+  // preferring a header that looks like a score, otherwise the one with the most numbers
+  function detectColumns(rows) {
+    const width = Math.max(...rows.map(r => r.length));
+    const header = headerOf(rows), body = header ? rows.slice(1) : rows;
+    const col = c => body.map(r => r[c]);
+    const numCount = Array.from({ length: width }, (_, c) => col(c).filter(isNum).length);
+    const keyed = Array.from({ length: width }, (_, c) => !!(header && SCORE_KEYS.test(String(header[c]))));
+    let best = null;
+    for (let c = 0; c < width; c++) {
+      const distinct = new Set(col(c).filter(isText).map(v => String(v).trim())).size;
+      if (distinct < 2) continue;
+      let sc = -1;
+      for (let d = c + 1; d < width; d++) {
+        if (!numCount[d]) continue;
+        if (sc < 0 || (keyed[d] && !keyed[sc]) || (keyed[d] === keyed[sc] && numCount[d] > numCount[sc])) sc = d;
+      }
+      if (sc < 0) continue;
+      // ties: prefer the text column closest to the numbers (usually the English name next to the score)
+      if (!best || distinct > best.distinct || (distinct === best.distinct && c > best.name)) best = { name: c, score: sc, distinct };
+    }
+    return best;
+  }
+
+  let imported = null, importRows = null, importCols = null, importWb = null;
+  const colLabel = (header, c) => header && String(header[c]).trim() ? `${String(header[c]).trim()}（第 ${c + 1} 列）` : `第 ${c + 1} 列`;
+
+  function fillColSelect(sel, width, header, chosen) {
+    sel.innerHTML = '';
+    for (let c = 0; c < width; c++) { const o = document.createElement('option'); o.value = c; o.textContent = colLabel(header, c); sel.appendChild(o); }
+    sel.value = chosen;
+  }
+  function renderImportPreview() {
+    const rows = importRows, cols = importCols, header = headerOf(rows), body = header ? rows.slice(1) : rows;
+    imported = body.filter(r => isText(r[cols.name])).map(r => ({
+      name: String(r[cols.name]).replace(/​|‌/g, '').trim(),
+      score: isNum(r[cols.score]) ? Number(r[cols.score]) : null
+    }));
+    const noScore = imported.filter(s => s.score === null).length;
+    $('importInfo').textContent = `共 ${imported.length} 人` + (noScore ? `（${noScore} 人无分数，按 0 计）` : '') + '，确认列选择后再导入';
+    $('importTable').innerHTML = '<tr><th>#</th><th>姓名</th><th>分数</th></tr>' + imported.map((s, i) =>
+      `<tr><td>${i + 1}</td><td>${s.name}</td><td class="num ${s.score === null ? 'skip' : ''}">${s.score === null ? '—' : s.score}</td></tr>`).join('');
+    $('importPreview').hidden = false;
+  }
+  function parseImportRows(rows) {
+    importRows = rows;
+    const cols = detectColumns(rows);
+    if (!cols) { $('importInfo').textContent = '没找到「姓名列 + 右侧数字列」的组合'; $('importPreview').hidden = true; imported = null; return; }
+    importCols = cols;
+    const width = Math.max(...rows.map(r => r.length)), header = headerOf(rows);
+    fillColSelect($('importNameCol'), width, header, cols.name);
+    fillColSelect($('importScoreCol'), width, header, cols.score);
+    renderImportPreview();
+  }
+  $('importNameCol').onchange = e => { importCols.name = +e.target.value; renderImportPreview(); };
+  $('importScoreCol').onchange = e => { importCols.score = +e.target.value; renderImportPreview(); };
+
+  function loadSheetJS() {
+    if (window.XLSX) return Promise.resolve();
+    return new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = res; s.onerror = () => rej(new Error('无法加载 xlsx 解析库（需联网）')); document.head.appendChild(s);
+    });
+  }
+  const sheetRows = (wb, name) => XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: '' })
+    .filter(r => r.some(c => String(c).trim() !== ''));
+  async function parseFile(file) {
+    importWb = null; $('importSheetWrap').hidden = true;
+    if (/\.xlsx?$/i.test(file.name)) {
+      await loadSheetJS();
+      importWb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      if (importWb.SheetNames.length > 1) {
+        const sel = $('importSheet'); sel.innerHTML = '';
+        importWb.SheetNames.forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+        $('importSheetWrap').hidden = false;
+      }
+      return sheetRows(importWb, importWb.SheetNames[0]);
+    }
+    return parseDelimited(await file.text());
+  }
+  $('importSheet').onchange = e => { if (importWb) parseImportRows(sheetRows(importWb, e.target.value)); };
+  $('importFile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    $('importInfo').textContent = '解析中…';
+    try { parseImportRows(await parseFile(f)); } catch (err) { $('importInfo').textContent = err.message; }
+  };
+  $('importParse').onclick = () => {
+    const t = $('importText').value;
+    if (t.trim()) { importWb = null; $('importSheetWrap').hidden = true; parseImportRows(parseDelimited(t)); }
+    else if ($('importFile').files[0]) $('importFile').onchange({ target: $('importFile') });
+    else $('importInfo').textContent = '请先选择文件或粘贴内容';
+  };
+  function applyImport(replace) {
+    if (!imported || !imported.length) return;
+    if (replace) state.roster = imported.map(s => ({ ...s, excluded: false }));
+    else imported.forEach(s => {
+      const hit = state.roster.find(r => r.name.toLowerCase() === s.name.toLowerCase());
+      if (hit) hit.score = s.score; else state.roster.push({ ...s, excluded: false });
+    });
+    state.drawn = []; save(); renderRoster();
+    $('importInfo').textContent = replace ? `已替换为 ${imported.length} 人` : `已合并，当前 ${state.roster.length} 人`;
+    $('importPreview').hidden = true; imported = null; $('importText').value = ''; $('importFile').value = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  $('importReplace').onclick = () => { if (confirm(`用导入的 ${imported.length} 人替换当前名单？`)) applyImport(true); };
+  $('importMerge').onclick = () => applyImport(false);
+
   // ---------- buttons / keys ----------
   $('flipA').onclick = () => cardA.flip();
   $('nextA').onclick = () => cardA.show(nextWords());

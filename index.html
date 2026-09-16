@@ -103,6 +103,31 @@
       </div>
       <table class="roster" id="roster"></table>
       <p class="note">修改只保存在本浏览器（localStorage）。没有分数的学生按 0 分计算。</p>
+
+      <div class="import" id="import">
+        <h3>导入名单</h3>
+        <p class="note">支持 .xlsx / .csv / .tsv / .txt，或直接从 Excel 复制后粘贴。自动识别姓名列和它右侧的数字列，其它列忽略。</p>
+        <div class="row">
+          <input type="file" id="importFile" accept=".xlsx,.xls,.csv,.tsv,.txt">
+        </div>
+        <textarea id="importText" rows="5" placeholder="或在此粘贴，例如：&#10;Kevin Chen&#9;7&#10;Freya Fang&#9;29"></textarea>
+        <div class="row">
+          <button class="btn ghost" id="importParse">解析预览</button>
+          <span class="note" id="importInfo"></span>
+        </div>
+        <div id="importPreview" hidden>
+          <div class="row cols">
+            <label id="importSheetWrap" hidden>工作表 <select id="importSheet"></select></label>
+            <label>姓名列 <select id="importNameCol"></select></label>
+            <label>分数列 <select id="importScoreCol"></select></label>
+          </div>
+          <table class="roster" id="importTable"></table>
+          <div class="row">
+            <button class="btn primary" id="importReplace">替换当前名单</button>
+            <button class="btn ghost" id="importMerge">合并（按姓名更新分数，新名字追加）</button>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 </main>
