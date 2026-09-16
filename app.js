@@ -123,6 +123,40 @@
     if (m === 'settings') renderRoster();
   }
 
+  // ---------- admin mode ----------
+  // SHA-256 of the admin password; the flag lives in sessionStorage (cleared when the tab closes)
+  const ADMIN_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
+  const ADMIN_KEY = 'vocab-flash-admin';
+  let admin = false;
+  try { admin = sessionStorage.getItem(ADMIN_KEY) === '1'; } catch (e) { /* ignore */ }
+  async function sha256(str) {
+    if (!window.crypto || !crypto.subtle) return null;
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  function applyAdmin() {
+    document.body.classList.toggle('admin', admin);
+    $('adminBtn').textContent = admin ? '🔓 Admin · 退出' : '🔒 Admin';
+    try { sessionStorage.setItem(ADMIN_KEY, admin ? '1' : '0'); } catch (e) { /* ignore */ }
+    if (!admin && mode === 'settings') setMode('cards');
+  }
+  function openAdminModal() {
+    $('adminErr').textContent = ''; $('adminPw').value = '';
+    $('adminModal').hidden = false; setTimeout(() => $('adminPw').focus(), 0);
+  }
+  function closeAdminModal() { $('adminModal').hidden = true; }
+  $('adminBtn').onclick = () => { if (admin) { admin = false; applyAdmin(); } else openAdminModal(); };
+  $('adminCancel').onclick = closeAdminModal;
+  $('adminModal').addEventListener('click', e => { if (e.target === $('adminModal')) closeAdminModal(); });
+  $('adminForm').onsubmit = async e => {
+    e.preventDefault();
+    const h = await sha256($('adminPw').value);
+    if (h === null) { $('adminErr').textContent = '此环境不支持密码校验（需 https 或 localhost）'; return; }
+    if (h === ADMIN_HASH) { admin = true; applyAdmin(); closeAdminModal(); }
+    else { $('adminErr').textContent = '密码错误'; $('adminPw').select(); }
+  };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('adminModal').hidden) closeAdminModal(); });
+
   // ---------- weighting ----------
   function eligible() {
     return state.roster.filter(s => s.name && !s.excluded && scoreOf(s) < state.cutoff);
@@ -261,7 +295,7 @@
 
   document.addEventListener('keydown', e => {
     const t = e.target;
-    if (mode === 'settings' || (t && t.matches && t.matches('input,textarea,select'))) return;
+    if (!$('adminModal').hidden || mode === 'settings' || (t && t.matches && t.matches('input,textarea,select'))) return;
     // a focused button would also fire click on space/enter keyup; drop focus first
     if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
     const k = e.key;
@@ -273,7 +307,7 @@
   });
 
   // ---------- init ----------
-  renderTopics(); buildDeck(); renderLog(); renderProb();
+  applyAdmin(); renderTopics(); buildDeck(); renderLog(); renderProb();
   $('okBtn').disabled = $('badBtn').disabled = true;
   cardA.show(nextWords());
 })();
