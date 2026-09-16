@@ -246,7 +246,10 @@
   $('badBtn').onclick = () => record(false);
 
   document.addEventListener('keydown', e => {
-    if (mode === 'settings' || e.target.matches('input,textarea')) return;
+    const t = e.target;
+    if (mode === 'settings' || (t && t.matches && t.matches('input,textarea,select'))) return;
+    // a focused button would also fire click on space/enter keyup; drop focus first
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
     const k = e.key;
     if (k === ' ' || k === 'Enter') { e.preventDefault(); (mode === 'cards' ? cardA : cardB).flip(); }
     else if (k === 'ArrowRight' || k.toLowerCase() === 'n') { e.preventDefault(); (mode === 'cards' ? $('nextA') : $('nextB')).click(); }
