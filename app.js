@@ -12,7 +12,9 @@
     noRepeat: true,
     roster: DEFAULT_ROSTER.map(s => ({ ...s })),
     drawn: [],
-    log: []
+    log: [],
+    seats: [],
+    seatFlip: false
   });
   let state = defaults();
   try {
@@ -118,7 +120,8 @@
     mode = m;
     $('modes').querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
     document.querySelectorAll('.mode').forEach(s => s.classList.toggle('active', s.id === 'mode-' + m));
-    $('toolbar').style.display = m === 'settings' ? 'none' : '';
+    $('toolbar').style.display = (m === 'settings' || m === 'seats') ? 'none' : '';
+    if (m === 'seats') renderSeats();
     if (m === 'pick') renderProb();
     if (m === 'settings') renderRoster();
   }
@@ -412,6 +415,75 @@
   $('importReplace').onclick = () => { if (confirm(`用导入的 ${imported.length} 人替换当前名单？`)) applyImport(true); };
   $('importMerge').onclick = () => applyImport(false);
 
+  // ---------- reset current round ----------
+  $('resetRound').onclick = () => {
+    if (rolling) return;
+    state.drawn = []; lastPicked = null; save(); renderProb();
+    $('pickName').textContent = '—'; $('pickName').classList.remove('landed');
+    $('okBtn').disabled = $('badBtn').disabled = true;
+  };
+
+  // ---------- random seating: 6 columns x 5 rows, every two columns share a desk ----------
+  const SEAT_COLS = 6, SEAT_ROWS = 5, SEAT_N = SEAT_COLS * SEAT_ROWS;
+  let seatSel = null, seatRolling = false;
+  const seatNames = () => state.roster.map(s => s.name).filter(Boolean);
+  function renderSeats(tmp) {
+    const seats = tmp || state.seats;
+    const box = $('seatRows'); box.innerHTML = '';
+    $('room').classList.toggle('flip', !!state.seatFlip);
+    for (let r = 0; r < SEAT_ROWS; r++) {
+      const row = document.createElement('div'); row.className = 'seat-row';
+      const no = document.createElement('div'); no.className = 'rno'; no.textContent = `${r + 1} 排`; row.appendChild(no);
+      for (let d = 0; d < SEAT_COLS / 2; d++) {
+        const desk = document.createElement('div'); desk.className = 'desk';
+        for (let k = 0; k < 2; k++) {
+          const i = r * SEAT_COLS + d * 2 + k, name = seats[i] || '';
+          const b = document.createElement('button');
+          b.className = 'seat' + (name ? '' : ' empty') + (tmp ? ' rolling' : '') + (seatSel === i ? ' sel' : '');
+          b.textContent = name || '空';
+          b.onclick = () => clickSeat(i);
+          desk.appendChild(b);
+        }
+        row.appendChild(desk);
+      }
+      box.appendChild(row);
+    }
+    const n = seatNames().length, placed = (state.seats || []).filter(Boolean).length;
+    $('seatInfo').textContent = placed ? `已安排 ${placed} 人 / 名单 ${n} 人` + (n > SEAT_N ? `（超过 ${SEAT_N} 个座位，多出的未安排）` : '')
+      : `名单 ${n} 人，点击「随机排座」开始`;
+  }
+  function clickSeat(i) {
+    if (seatRolling) return;
+    if (seatSel === null) { seatSel = i; }
+    else if (seatSel === i) { seatSel = null; }
+    else {
+      const s = state.seats.slice(); while (s.length < SEAT_N) s.push(null);
+      [s[seatSel], s[i]] = [s[i], s[seatSel]]; state.seats = s; seatSel = null; save();
+    }
+    renderSeats();
+  }
+  const randomSeating = () => { const s = shuffle(seatNames()).slice(0, SEAT_N); while (s.length < SEAT_N) s.push(null); return s; };
+  $('seatShuffle').onclick = () => {
+    if (seatRolling) return;
+    if (!seatNames().length) { $('seatInfo').textContent = '名单为空，请先在「名单设置」里添加或导入学生'; return; }
+    seatRolling = true; seatSel = null;
+    let i = 0;
+    const tick = () => {
+      if (i++ < 10) { renderSeats(randomSeating()); setTimeout(tick, 70 + i * 12); }
+      else { state.seats = randomSeating(); seatRolling = false; save(); renderSeats(); }
+    };
+    tick();
+  };
+  $('seatFlip').onclick = () => { state.seatFlip = !state.seatFlip; save(); renderSeats(); };
+  $('seatClear').onclick = () => { if (confirm('清空当前座位表？')) { state.seats = []; seatSel = null; save(); renderSeats(); } };
+  $('seatCopy').onclick = () => {
+    const rows = [];
+    for (let r = 0; r < SEAT_ROWS; r++) rows.push(Array.from({ length: SEAT_COLS }, (_, c) => state.seats[r * SEAT_COLS + c] || '').join('\t'));
+    navigator.clipboard && navigator.clipboard.writeText('讲台\n' + rows.join('\n')).then(() => {
+      $('seatCopy').textContent = '已复制'; setTimeout(() => $('seatCopy').textContent = '复制座位表', 1200);
+    });
+  };
+
   // ---------- buttons / keys ----------
   $('flipA').onclick = () => cardA.flip();
   $('nextA').onclick = () => cardA.show(nextWords());
@@ -428,7 +500,7 @@
 
   document.addEventListener('keydown', e => {
     const t = e.target;
-    if (!$('adminModal').hidden || mode === 'settings' || (t && t.matches && t.matches('input,textarea,select'))) return;
+    if (!$('adminModal').hidden || mode === 'settings' || mode === 'seats' || (t && t.matches && t.matches('input,textarea,select'))) return;
     // a focused button would also fire click on space/enter keyup; drop focus first
     if (document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
     const k = e.key;

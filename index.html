@@ -12,6 +12,7 @@
   <nav class="modes" id="modes">
     <button data-mode="cards" class="active">随机卡</button>
     <button data-mode="pick">抽人回答</button>
+    <button data-mode="seats">随机座位</button>
     <button data-mode="settings" class="admin-only">名单设置</button>
   </nav>
   <button class="admin-btn" id="adminBtn" title="管理员模式">Admin</button>
@@ -60,7 +61,7 @@
     <div class="pick-layout">
       <div class="pick-stage">
         <div class="spotlight" id="spotlight">
-          <div class="label">本轮已抽 <span id="roundInfo">0 / 0</span></div>
+          <div class="label">本轮已抽 <span id="roundInfo">0 / 0</span> <button class="link" id="resetRound" title="清空本轮已抽名单，所有人重新可抽">重置本轮</button></div>
           <div class="name" id="pickName">—</div>
         </div>
         <div class="card-wrap" id="cardB"></div>
@@ -90,6 +91,24 @@
         <table id="probTable"></table>
         <p class="note">分数 ≥ <b id="cutoffEcho">30</b> 不参与；按排名分配权重，分数越低权重越大（权重 = 分数不低于自己的参与人数）。</p>
       </aside>
+    </div>
+  </section>
+
+  <!-- 随机座位 -->
+  <section class="mode" id="mode-seats">
+    <div class="seats-wrap">
+      <div class="actions seats-actions">
+        <button class="btn primary big" id="seatShuffle">随机排座</button>
+        <button class="btn ghost" id="seatFlip">切换视角</button>
+        <button class="btn ghost" id="seatCopy">复制座位表</button>
+        <button class="btn ghost" id="seatClear">清空</button>
+      </div>
+      <p class="note seats-note" id="seatInfo"></p>
+      <div class="room" id="room">
+        <div class="podium">讲台</div>
+        <div class="rows" id="seatRows"></div>
+      </div>
+      <p class="note seats-note">6 列 × 5 行，每两列为同桌。从前排往后坐满；点击两个座位可以互换。名单来自「名单设置」。</p>
     </div>
   </section>
 
