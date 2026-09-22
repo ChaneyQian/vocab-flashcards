@@ -1,6 +1,12 @@
 (() => {
   const TOPICS = window.VOCAB_DATA || [];
-  const DEFAULT_ROSTER = (window.STUDENT_DATA || []).map(s => ({ name: s.name, score: s.score, excluded: false }));
+  const DEFAULT_ROSTER = (window.STUDENT_DATA || []).map(s => ({ name: s.name, cn: s.cn || '', score: s.score, excluded: false }));
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // big Chinese name with the English name underneath (or just the English name)
+  function nameHTML(name) {
+    const r = (state.roster || []).find(x => x.name === name), cn = r && r.cn ? r.cn : '';
+    return cn ? `<span class="big">${esc(cn)}</span><span class="small">${esc(name)}</span>` : `<span class="big">${esc(name)}</span>`;
+  }
   const LS_KEY = 'vocab-flash-v1';
 
   // ---------- state ----------
@@ -14,13 +20,20 @@
     drawn: [],
     log: [],
     seats: [],
-    seatFlip: false
+    seatFlip: false,
+    seatRules: {
+      back: 'Kane Huang, Eleanor Li, Andrew Shen, Lawrence Zhang, Alice Wang, Freya Zheng, Jessica Zhang',
+      front: 'Aria Zheng, Angelina Ye',
+      apart: 'Zane Xu / Kevin Jiang'
+    }
   });
   let state = defaults();
   try {
     const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
     if (saved && Array.isArray(saved.roster)) state = { ...defaults(), ...saved };
   } catch (e) { /* ignore */ }
+  // older saved rosters have no Chinese names: fill them in from the bundled data by English name
+  state.roster.forEach(s => { if (!s.cn) { const d = DEFAULT_ROSTER.find(x => x.name === s.name); if (d && d.cn) s.cn = d.cn; } });
   const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } };
 
   const $ = id => document.getElementById(id);
@@ -196,7 +209,7 @@
         nameEl.textContent = names[Math.floor(Math.random() * names.length)];
         i++; setTimeout(tick, 50 + i * i * 1.6);
       } else {
-        nameEl.textContent = chosen.name;
+        nameEl.innerHTML = nameHTML(chosen.name);
         nameEl.classList.remove('rolling'); nameEl.classList.add('landed');
         rolling = false; lastPicked = chosen.name;
         if (state.noRepeat && !state.drawn.includes(chosen.name)) state.drawn.push(chosen.name);
@@ -255,12 +268,13 @@
   // ---------- roster settings ----------
   function renderRoster() {
     const t = $('roster');
-    let html = '<tr><th>#</th><th>姓名</th><th>分数</th><th>手动排除</th><th>状态</th><th></th></tr>';
+    let html = '<tr><th>#</th><th>英文名</th><th>中文名</th><th>分数</th><th>手动排除</th><th>状态</th><th></th></tr>';
     state.roster.forEach((s, i) => {
       const out = s.excluded || scoreOf(s) >= state.cutoff;
       const status = s.excluded ? '手动排除' : scoreOf(s) >= state.cutoff ? `≥${state.cutoff}，不参与` : (typeof s.score !== 'number' ? '无分数，按 0' : '参与');
       html += `<tr class="${out ? 'out' : ''}"><td>${i + 1}</td>` +
-        `<td><input type="text" data-i="${i}" data-k="name" value="${s.name.replace(/"/g, '&quot;')}"></td>` +
+        `<td><input type="text" data-i="${i}" data-k="name" value="${esc(s.name)}"></td>` +
+        `<td><input type="text" data-i="${i}" data-k="cn" value="${esc(s.cn || '')}" style="width:90px"></td>` +
         `<td><input type="number" data-i="${i}" data-k="score" value="${typeof s.score === 'number' ? s.score : ''}" style="width:80px"></td>` +
         `<td><input type="checkbox" data-i="${i}" data-k="excluded" ${s.excluded ? 'checked' : ''}></td>` +
         `<td class="status">${status}</td><td><button class="del" data-del="${i}" title="删除">✕</button></td></tr>`;
@@ -270,6 +284,7 @@
     t.querySelectorAll('input').forEach(inp => inp.onchange = () => {
       const s = state.roster[+inp.dataset.i], k = inp.dataset.k;
       if (k === 'name') s.name = inp.value.trim();
+      else if (k === 'cn') s.cn = inp.value.trim();
       else if (k === 'score') s.score = inp.value === '' ? null : Number(inp.value);
       else s.excluded = inp.checked;
       save(); renderRoster();
@@ -277,7 +292,7 @@
     t.querySelectorAll('.del').forEach(b => b.onclick = () => { state.roster.splice(+b.dataset.del, 1); save(); renderRoster(); });
   }
   $('cutoff').onchange = e => { state.cutoff = Number(e.target.value) || 0; save(); renderRoster(); };
-  $('addRow').onclick = () => { state.roster.push({ name: '', score: null, excluded: false }); save(); renderRoster(); };
+  $('addRow').onclick = () => { state.roster.push({ name: '', cn: '', score: null, excluded: false }); save(); renderRoster(); };
   $('resetRoster').onclick = () => {
     if (confirm('恢复为成绩表中的默认名单和分数？')) { state.roster = DEFAULT_ROSTER.map(s => ({ ...s })); state.cutoff = 30; state.drawn = []; save(); renderRoster(); }
   };
@@ -339,30 +354,47 @@
     for (let c = 0; c < width; c++) { const o = document.createElement('option'); o.value = c; o.textContent = colLabel(header, c); sel.appendChild(o); }
     sel.value = chosen;
   }
+  // optional Chinese-name column: the text column (other than the name column) with the most CJK values
+  const hasCJK = v => /[㐀-鿿]/.test(String(v));
+  function detectCnColumn(rows, nameCol) {
+    const width = Math.max(...rows.map(r => r.length)), header = headerOf(rows), body = header ? rows.slice(1) : rows;
+    let best = -1, bestN = 0;
+    for (let c = 0; c < width; c++) {
+      if (c === nameCol) continue;
+      const vals = body.map(r => r[c]).filter(isText), cjk = vals.filter(hasCJK).length;
+      if (cjk >= 2 && cjk > vals.length / 2 && new Set(vals).size >= 2 && cjk > bestN) { best = c; bestN = cjk; }
+    }
+    return best;
+  }
   function renderImportPreview() {
     const rows = importRows, cols = importCols, header = headerOf(rows), body = header ? rows.slice(1) : rows;
     imported = body.filter(r => isText(r[cols.name])).map(r => ({
       name: String(r[cols.name]).replace(/​|‌/g, '').trim(),
+      cn: cols.cn >= 0 && isText(r[cols.cn]) ? String(r[cols.cn]).trim() : '',
       score: isNum(r[cols.score]) ? Number(r[cols.score]) : null
     }));
     const noScore = imported.filter(s => s.score === null).length;
     $('importInfo').textContent = `共 ${imported.length} 人` + (noScore ? `（${noScore} 人无分数，按 0 计）` : '') + '，确认列选择后再导入';
-    $('importTable').innerHTML = '<tr><th>#</th><th>姓名</th><th>分数</th></tr>' + imported.map((s, i) =>
-      `<tr><td>${i + 1}</td><td>${s.name}</td><td class="num ${s.score === null ? 'skip' : ''}">${s.score === null ? '—' : s.score}</td></tr>`).join('');
+    $('importTable').innerHTML = '<tr><th>#</th><th>姓名</th><th>中文名</th><th>分数</th></tr>' + imported.map((s, i) =>
+      `<tr><td>${i + 1}</td><td>${esc(s.name)}</td><td class="${s.cn ? '' : 'skip'}">${esc(s.cn) || '—'}</td><td class="num ${s.score === null ? 'skip' : ''}">${s.score === null ? '—' : s.score}</td></tr>`).join('');
     $('importPreview').hidden = false;
   }
   function parseImportRows(rows) {
     importRows = rows;
     const cols = detectColumns(rows);
     if (!cols) { $('importInfo').textContent = '没找到「姓名列 + 右侧数字列」的组合'; $('importPreview').hidden = true; imported = null; return; }
+    cols.cn = detectCnColumn(rows, cols.name);
     importCols = cols;
     const width = Math.max(...rows.map(r => r.length)), header = headerOf(rows);
     fillColSelect($('importNameCol'), width, header, cols.name);
     fillColSelect($('importScoreCol'), width, header, cols.score);
+    fillColSelect($('importCnCol'), width, header, cols.cn);
+    const none = document.createElement('option'); none.value = -1; none.textContent = '无'; $('importCnCol').prepend(none); $('importCnCol').value = cols.cn;
     renderImportPreview();
   }
   $('importNameCol').onchange = e => { importCols.name = +e.target.value; renderImportPreview(); };
   $('importScoreCol').onchange = e => { importCols.score = +e.target.value; renderImportPreview(); };
+  $('importCnCol').onchange = e => { importCols.cn = +e.target.value; renderImportPreview(); };
 
   function loadSheetJS() {
     if (window.XLSX) return Promise.resolve();
@@ -405,7 +437,7 @@
     if (replace) state.roster = imported.map(s => ({ ...s, excluded: false }));
     else imported.forEach(s => {
       const hit = state.roster.find(r => r.name.toLowerCase() === s.name.toLowerCase());
-      if (hit) hit.score = s.score; else state.roster.push({ ...s, excluded: false });
+      if (hit) { hit.score = s.score; if (s.cn) hit.cn = s.cn; } else state.roster.push({ ...s, excluded: false });
     });
     state.drawn = []; save(); renderRoster();
     $('importInfo').textContent = replace ? `已替换为 ${imported.length} 人` : `已合并，当前 ${state.roster.length} 人`;
@@ -425,8 +457,10 @@
 
   // ---------- random seating: 6 columns x 5 rows, every two columns share a desk ----------
   const SEAT_COLS = 6, SEAT_ROWS = 5, SEAT_N = SEAT_COLS * SEAT_ROWS;
-  let seatSel = null, seatRolling = false;
+  let seatSel = null, seatRolling = false, dragFrom = null;
   const seatNames = () => state.roster.map(s => s.name).filter(Boolean);
+  const locks = () => (state.seatLocks = state.seatLocks || []);
+  const isLocked = name => !!name && locks().includes(name);
   function renderSeats(tmp) {
     const seats = tmp || state.seats;
     const box = $('seatRows'); box.innerHTML = '';
@@ -439,30 +473,108 @@
         for (let k = 0; k < 2; k++) {
           const i = r * SEAT_COLS + d * 2 + k, name = seats[i] || '';
           const b = document.createElement('button');
-          b.className = 'seat' + (name ? '' : ' empty') + (tmp ? ' rolling' : '') + (seatSel === i ? ' sel' : '');
-          b.textContent = name || '空';
+          b.className = 'seat' + (name ? '' : ' empty') + (tmp ? ' rolling' : '') + (seatSel === i ? ' sel' : '') +
+            (!tmp && seatWarn.has(i) ? ' warn' : '') + (!tmp && isLocked(name) ? ' locked' : '');
+          b.innerHTML = name ? nameHTML(name) + (isLocked(name) ? '<span class="lock" title="已锁定，重新排座时不动">🔒</span>' : '') : '空';
+          b.title = name ? '单击选中后再点另一座位可互换；拖拽可互换；双击锁定/解锁' : '';
           b.onclick = () => clickSeat(i);
+          b.ondblclick = () => toggleLock(i);
+          // drag & drop swap
+          b.draggable = !tmp && !!name;
+          b.ondragstart = e => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (x) { /* ignore */ } b.classList.add('dragging'); };
+          b.ondragend = () => { dragFrom = null; box.querySelectorAll('.dragover,.dragging').forEach(x => x.classList.remove('dragover', 'dragging')); };
+          b.ondragover = e => { if (dragFrom !== null && dragFrom !== i) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; b.classList.add('dragover'); } };
+          b.ondragleave = () => b.classList.remove('dragover');
+          b.ondrop = e => { e.preventDefault(); if (dragFrom !== null && dragFrom !== i) swapSeats(dragFrom, i); dragFrom = null; };
           desk.appendChild(b);
         }
         row.appendChild(desk);
       }
       box.appendChild(row);
     }
-    const n = seatNames().length, placed = (state.seats || []).filter(Boolean).length;
-    $('seatInfo').textContent = placed ? `已安排 ${placed} 人 / 名单 ${n} 人` + (n > SEAT_N ? `（超过 ${SEAT_N} 个座位，多出的未安排）` : '')
+    const n = seatNames().length, placed = (state.seats || []).filter(Boolean).length, lk = locks().length;
+    $('seatInfo').textContent = placed ? `已安排 ${placed} 人 / 名单 ${n} 人` + (lk ? `，锁定 ${lk} 人` : '') + (n > SEAT_N ? `（超过 ${SEAT_N} 个座位，多出的未安排）` : '')
       : `名单 ${n} 人，点击「随机排座」开始`;
+  }
+  function swapSeats(a, b) {
+    const s = (state.seats || []).slice(); while (s.length < SEAT_N) s.push(null);
+    [s[a], s[b]] = [s[b], s[a]]; state.seats = s; seatSel = null; seatWarn = ruleViolations(s, resolveRules()); save(); renderSeats();
   }
   function clickSeat(i) {
     if (seatRolling) return;
-    if (seatSel === null) { seatSel = i; }
-    else if (seatSel === i) { seatSel = null; }
-    else {
-      const s = state.seats.slice(); while (s.length < SEAT_N) s.push(null);
-      [s[seatSel], s[i]] = [s[i], s[seatSel]]; state.seats = s; seatSel = null; save();
-    }
-    renderSeats();
+    if (seatSel === null) { seatSel = i; renderSeats(); }
+    else if (seatSel === i) { seatSel = null; renderSeats(); }
+    else swapSeats(seatSel, i);
+  }
+  function toggleLock(i) {
+    if (seatRolling) return;
+    const name = (state.seats || [])[i]; if (!name) return;
+    const l = locks(), k = l.indexOf(name);
+    if (k >= 0) l.splice(k, 1); else l.push(name);
+    seatSel = null; save(); renderSeats();
   }
   const randomSeating = () => { const s = shuffle(seatNames()).slice(0, SEAT_N); while (s.length < SEAT_N) s.push(null); return s; };
+
+  // --- seating rules: back rows / front rows / keep apart ---
+  const rowOf = i => Math.floor(i / SEAT_COLS);
+  const splitNames = s => String(s || '').split(/[,，;；\n]/).map(x => x.trim()).filter(Boolean);
+  // resolve a typed token ("Kevin J") to one roster name by case-insensitive prefix; null if none/ambiguous
+  function resolveName(token, names) {
+    const t = token.toLowerCase().replace(/\s+/g, ' ');
+    const exact = names.find(n => n.toLowerCase() === t); if (exact) return exact;
+    const hits = names.filter(n => n.toLowerCase().startsWith(t));
+    return hits.length === 1 ? hits[0] : null;
+  }
+  function resolveRules() {
+    const names = seatNames(), r = state.seatRules || {}, bad = [];
+    const list = s => splitNames(s).map(tok => { const n = resolveName(tok, names); if (!n) bad.push(tok); return n; }).filter(Boolean);
+    const back = list(r.back), front = list(r.front);
+    const apart = String(r.apart || '').split(/\n/).map(line => {
+      const pair = line.split(/[\/、,，;；]/).map(x => x.trim()).filter(Boolean);
+      if (pair.length < 2) return null;
+      const a = resolveName(pair[0], names), b = resolveName(pair[1], names);
+      if (!a) bad.push(pair[0]); if (!b) bad.push(pair[1]);
+      return a && b && a !== b ? [a, b] : null;
+    }).filter(Boolean);
+    return { back, front, apart, bad };
+  }
+  // seat indices that break a rule for the given arrangement
+  function ruleViolations(seats, rules) {
+    const pos = {}; seats.forEach((n, i) => { if (n) pos[n] = i; });
+    const v = new Set();
+    rules.back.forEach(n => { if (n in pos && rowOf(pos[n]) < 2) v.add(pos[n]); });
+    rules.front.forEach(n => { if (n in pos && rowOf(pos[n]) > 1) v.add(pos[n]); });
+    rules.apart.forEach(([a, b]) => { if (a in pos && b in pos && rowOf(pos[a]) === rowOf(pos[b])) { v.add(pos[a]); v.add(pos[b]); } });
+    return v;
+  }
+  // place rule groups into their allowed seats first, everyone else at random; retry until no violations
+  function constrainedSeating(rules) {
+    const all = seatNames();
+    // locked people keep their current seat; everyone else is dealt into the remaining front-most seats
+    const fixed = {}; (state.seats || []).forEach((nm, i) => { if (nm && isLocked(nm) && all.includes(nm)) fixed[i] = nm; });
+    const fixedNames = new Set(Object.values(fixed));
+    const names = all.filter(x => !fixedNames.has(x)).slice(0, SEAT_N - fixedNames.size), n = names.length;
+    const used = []; for (let i = 0; used.length < n && i < SEAT_N; i++) if (!(i in fixed)) used.push(i);
+    let best = null;
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const seats = Array(SEAT_N).fill(null), free = new Set(used), placed = new Set();
+      Object.entries(fixed).forEach(([i, nm]) => { seats[+i] = nm; });
+      const put = (name, allowed) => {
+        const opts = shuffle(allowed.filter(i => free.has(i)));
+        const i = opts.length ? opts[0] : shuffle([...free])[0];
+        seats[i] = name; free.delete(i); placed.add(name);
+      };
+      shuffle(rules.back.filter(x => names.includes(x))).forEach(x => put(x, used.filter(i => rowOf(i) >= 2)));
+      shuffle(rules.front.filter(x => names.includes(x) && !placed.has(x))).forEach(x => put(x, used.filter(i => rowOf(i) <= 1)));
+      const rest = shuffle(names.filter(x => !placed.has(x))), slots = shuffle([...free]);
+      rest.forEach((x, k) => seats[slots[k]] = x);
+      const v = ruleViolations(seats, rules);
+      if (!best || v.size < best.v.size) best = { seats, v };
+      if (!v.size) break;
+    }
+    return best;
+  }
+  let seatWarn = new Set();
   $('seatShuffle').onclick = () => {
     if (seatRolling) return;
     if (!seatNames().length) { $('seatInfo').textContent = '名单为空，请先在「名单设置」里添加或导入学生'; return; }
@@ -470,12 +582,25 @@
     let i = 0;
     const tick = () => {
       if (i++ < 10) { renderSeats(randomSeating()); setTimeout(tick, 70 + i * 12); }
-      else { state.seats = randomSeating(); seatRolling = false; save(); renderSeats(); }
+      else {
+        const rules = resolveRules(), best = constrainedSeating(rules);
+        state.seats = best.seats; seatWarn = best.v; seatRolling = false; save(); renderSeats();
+        const msg = [];
+        if (best.v.size) msg.push(`有 ${best.v.size} 个座位无法满足规则（红框）`);
+        if (rules.bad.length) msg.push(`规则里没找到：${rules.bad.join('、')}`);
+        $('ruleInfo').textContent = msg.length ? msg.join('；') : '规则全部满足';
+        if (msg.length) $('seatInfo').textContent += '　' + msg.join('；');
+      }
     };
     tick();
   };
+  ['ruleBack', 'ruleFront', 'ruleApart'].forEach(id => {
+    const key = id.slice(4).toLowerCase();
+    $(id).value = (state.seatRules || {})[key] || '';
+    $(id).onchange = () => { state.seatRules = { ...(state.seatRules || {}), [key]: $(id).value }; save(); const r = resolveRules(); $('ruleInfo').textContent = r.bad.length ? `没找到：${r.bad.join('、')}` : '规则已保存'; };
+  });
   $('seatFlip').onclick = () => { state.seatFlip = !state.seatFlip; save(); renderSeats(); };
-  $('seatClear').onclick = () => { if (confirm('清空当前座位表？')) { state.seats = []; seatSel = null; save(); renderSeats(); } };
+  $('seatClear').onclick = () => { if (confirm('清空当前座位表（包括锁定）？')) { state.seats = []; state.seatLocks = []; seatSel = null; seatWarn = new Set(); save(); renderSeats(); } };
   $('seatCopy').onclick = () => {
     const rows = [];
     for (let r = 0; r < SEAT_ROWS; r++) rows.push(Array.from({ length: SEAT_COLS }, (_, c) => state.seats[r * SEAT_COLS + c] || '').join('\t'));

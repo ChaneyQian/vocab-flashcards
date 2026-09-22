@@ -1863,86 +1863,107 @@ window.VOCAB_DATA = [
 window.STUDENT_DATA = [
  {
   "name": "Kevin Chen",
+  "cn": "陈沐恩",
   "score": 7
  },
  {
   "name": "Freya Fang",
+  "cn": "方林熠伽",
   "score": 29
  },
  {
   "name": "Kane Huang",
+  "cn": "黄凯博",
   "score": 22
  },
  {
   "name": "Kevin Jiang",
+  "cn": "姜佶乐",
   "score": 8
  },
  {
   "name": "Eleanor Li",
+  "cn": "李星瑶",
   "score": 38
  },
  {
   "name": "Joan Luo",
+  "cn": "骆钰涵",
   "score": 6
  },
  {
   "name": "Mona Mao",
+  "cn": "毛一涵",
   "score": 30
  },
  {
   "name": "Jimi Mu",
+  "cn": "穆彦廷",
   "score": 0
  },
  {
   "name": "Andrew Shen",
+  "cn": "沈翀旭",
   "score": 24
  },
  {
   "name": "Leo Shen",
+  "cn": "沈俊梁",
   "score": null
  },
  {
   "name": "Olivia Shu",
+  "cn": "舒意然",
   "score": 21
  },
  {
   "name": "Tony Wang",
+  "cn": "王皓宇",
   "score": 15
  },
  {
   "name": "Alice Wang",
+  "cn": "王馨",
   "score": 23
  },
  {
   "name": "Judy Wu",
+  "cn": "吴雨墨",
   "score": 11
  },
  {
   "name": "Zane Xu",
+  "cn": "徐正",
   "score": 3
  },
  {
   "name": "April Yang",
+  "cn": "杨妍彤",
   "score": 7
  },
  {
   "name": "Angelina Ye",
+  "cn": "叶如意",
   "score": 15
  },
  {
   "name": "Jessica Zhang",
+  "cn": "张绮文",
   "score": 5
  },
  {
   "name": "Lawrence Zhang",
+  "cn": "章若瀚",
   "score": 31
  },
  {
   "name": "Aria Zheng",
+  "cn": "郑冰妍",
   "score": 25
  },
  {
   "name": "Freya Zheng",
+  "cn": "郑诗诺",
   "score": 14
  }
 ];

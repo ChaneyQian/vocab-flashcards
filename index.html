@@ -109,6 +109,16 @@
         <div class="rows" id="seatRows"></div>
       </div>
       <p class="note seats-note">6 列 × 5 行，每两列为同桌。从前排往后坐满；点击两个座位可以互换。名单来自「名单设置」。</p>
+
+      <div class="seat-rules admin-only" id="seatRules">
+        <h3>座位规则 <span class="note">（Admin，名字可写前缀，如 Kevin J；多个用逗号分隔）</span></h3>
+        <div class="rules-grid">
+          <label>坐后三排（3–5 排）<textarea id="ruleBack" rows="2"></textarea></label>
+          <label>坐前两排（1–2 排）<textarea id="ruleFront" rows="2"></textarea></label>
+          <label>必须分开（不同排、不同桌；每行一对，用 / 分隔）<textarea id="ruleApart" rows="2"></textarea></label>
+        </div>
+        <p class="note" id="ruleInfo"></p>
+      </div>
     </div>
   </section>
 
@@ -139,6 +149,7 @@
             <label id="importSheetWrap" hidden>工作表 <select id="importSheet"></select></label>
             <label>姓名列 <select id="importNameCol"></select></label>
             <label>分数列 <select id="importScoreCol"></select></label>
+            <label>中文名列（可选） <select id="importCnCol"></select></label>
           </div>
           <table class="roster" id="importTable"></table>
           <div class="row">

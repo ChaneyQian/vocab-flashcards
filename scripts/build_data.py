@@ -1,7 +1,7 @@
 """Regenerate data.js from the docx word lists and the class score sheet.
 
 Usage:  python scripts/build_data.py
-Only English names and quiz scores are exported (no student IDs / Chinese names).
+English name, Chinese name and quiz score are exported (no student IDs).
 """
 import glob, json, re, os
 import docx, openpyxl
@@ -33,7 +33,7 @@ if xlsx:
             continue
         name = str(row[2]).replace("‌", "").strip()
         score = row[9] if isinstance(row[9], (int, float)) else None
-        students.append({"name": name, "score": score})
+        students.append({"name": name, "cn": str(row[1] or "").strip(), "score": score})
     print(f"{len(students)} students")
 
 with open("data.js", "w", encoding="utf-8") as fh:
